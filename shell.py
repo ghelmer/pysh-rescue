@@ -35,6 +35,23 @@ def expand_globs(tokens):
     return expanded
 
 
+def if_nesting_delta(tokens: list[str]) -> int:
+    """ Check to see if a `fi` is in this line. """
+    at_cmd_start = True
+    delta = 0
+    for tok in tokens:
+        if tok == ";":
+            at_cmd_start = True
+            continue
+        if at_cmd_start:
+            if tok == "if":
+                delta += 1
+            elif tok == "fi":
+                delta -= 1
+            at_cmd_start = False
+    return delta
+
+
 def read_until_fi(read_func):
     """
     Read lines until 'fi' is encountered, tracking nesting.
@@ -136,9 +153,13 @@ def parse_simple_command(tokens: list[str], state: ShellState) -> Command|None:
     it = iter(tokens)
     for tok in it:
         if tok == ">":
-            stdout = next(it)
+            stdout = next(it, None)
+            if stdout is None:
+                raise SyntaxError("syntax error: expected filename after '>'")
         elif tok == ">>":
-            stdout = next(it)
+            stdout = next(it, None)
+            if stdout is None:
+                raise SyntaxError("syntax error: expected filename after '>>'")
             append = True
         else:
             args.append(tok)
@@ -182,15 +203,31 @@ def redirect_stdout(filename, append):
             sys.stdout = old_stdout
 
 
-def execute_command(cmd: Command, shell_state: ShellState):
-    with redirect_stdout(cmd.stdout, cmd.append):
-        if cmd.name in BUILTINS:
-            return BUILTINS[cmd.name](cmd.args, shell_state)
+def execute_command(cmd: Command, shell_state: ShellState) -> int:
+    # Builtins: keep Python-level stdout redirection
+    if cmd.name in BUILTINS:
+        with redirect_stdout(cmd.stdout, cmd.append):
+            return BUILTINS[cmd.name](cmd.args, shell_state) or 0
 
-        try:
-            subprocess.run([cmd.name] + cmd.args)
-        except FileNotFoundError:
-            print(f"{cmd.name}: command not found")
+    # External commands: redirect via subprocess stdout
+    stdout_handle = None
+    try:
+        if cmd.stdout is not None:
+            mode = "a" if cmd.append else "w"
+            stdout_handle = open(cmd.stdout, mode)
+
+        completed = subprocess.run(
+            [cmd.name] + cmd.args,
+            stdout=stdout_handle if stdout_handle else None,
+        )
+        return completed.returncode
+    except FileNotFoundError:
+        # This should go to stderr ideally; print is OK for now
+        print(f"{cmd.name}: command not found")
+        return 127
+    finally:
+        if stdout_handle:
+            stdout_handle.close()
 
 
 class Shell:
@@ -205,7 +242,10 @@ class Shell:
 
                 # if-block handling needs to read more lines BEFORE parsing
                 if tokens and tokens[0] == "if":
-                    block_lines = [line] + read_until_fi(read_command)
+                    nesting = if_nesting_delta(tokens)
+                    block_lines = [line]
+                    if nesting > 0:
+                        block_lines += read_until_fi(read_command)
                     block_text = " ; ".join(block_lines)
                     block_tokens = tokenize(block_text)
                     nodes = [parse_if_to_node(block_tokens, parse_command_list, execute_command)]
