@@ -49,15 +49,26 @@ def read_until_fi(read_func):
         line = read_func(prompt="> ")
         lines.append(line)
 
-        # Parse just enough to detect keywords
         try:
-            for tok in tokenize(line):
-                if tok == "if":
-                    nesting += 1
-                elif tok == "fi":
-                    nesting -= 1
+            toks = tokenize(line)
+
+            at_cmd_start = True
+            for tok in toks:
+                if tok == ";":
+                    at_cmd_start = True
+                    continue
+
+                if at_cmd_start:
+                    if tok == "if":
+                        nesting += 1
+                    elif tok == "fi":
+                        nesting -= 1
+                    at_cmd_start = False
+                else:
+                    # still within command args
+                    pass
+
         except ValueError:
-            # Incomplete quoting, not a keyword line
             pass
 
     return lines
@@ -78,10 +89,21 @@ def read_command(prompt="$ "):
 
 
 def tokenize(line: str) -> list[str]:
-    lex = shlex.shlex(line, posix=True, punctuation_chars=";&><")
+    lex = shlex.shlex(line, posix=True, punctuation_chars=";&><|")
     lex.whitespace_split = True
     lex.commenters = ""
-    return list(lex)
+    tokens = list(lex)
+
+    result = []
+    i = 0
+    while i < len(tokens):
+        if i + 1 < len(tokens) and tokens[i] in (">", "<", "&", "|") and tokens[i] == tokens[i + 1]:
+            result.append(tokens[i] * 2)  # >>, <<, &&, ||
+            i += 2
+        else:
+            result.append(tokens[i])
+            i += 1
+    return result
 
 
 def split_on_semicolons(tokens: list[str]):
@@ -130,16 +152,17 @@ def parse_simple_command(tokens: list[str], state: ShellState) -> Command|None:
 
 def parse_command_list(tokens: list[str], state: ShellState) -> list[Command]:
     command_tokens = split_on_semicolons(tokens)
-    return [parse_simple_command(cmd, state) for cmd in command_tokens]
+    cmds = []
+    for cmd_tokens in command_tokens:
+        cmd = parse_simple_command(cmd_tokens, state)
+        if cmd is not None:
+            cmds.append(cmd)
+    return cmds
 
 
 def parse_top_level(tokens: list[str], state: ShellState) -> list[Executable]:
     if not tokens:
         return []
-
-    if tokens[0] == "if":
-        return [parse_if_to_node(tokens, state, parse_command_list, )]  # you implement this wrapper
-
     cmds = parse_command_list(tokens, state)
     return [CommandNode(c, execute_command) for c in cmds]
 
