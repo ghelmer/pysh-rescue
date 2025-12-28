@@ -1,3 +1,4 @@
+""" Command to be executed. """
 from shell_state import ShellState
 
 
