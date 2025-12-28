@@ -11,17 +11,10 @@ from shell_builtins import BUILTINS
 from command import Command
 from exceptions import ShellExit
 from shell_state import ShellState
-from block_reader import read_until_fi
 from if_parser import parse_if_to_node
 
-
 # Import builtin modules to register them
-import builtin_cd
-import builtin_echo
-import builtin_exit
-import builtin_pwd
 import builtin_ls
-import builtin_test
 
 GLOB_CHARS = set("*?[")
 
@@ -42,6 +35,34 @@ def expand_globs(tokens):
 
     return expanded
 
+
+def read_until_fi(read_func):
+    """
+    Read lines until 'fi' is encountered, tracking nesting.
+    Uses the provided read_func which handles continuation.
+    Returns list of complete logical lines.
+    """
+    lines = []
+    nesting = 1
+
+    while nesting > 0:
+        line = read_func(prompt="> ")
+        lines.append(line)
+
+        # Parse just enough to detect keywords
+        try:
+            for tok in tokenize(line):
+                if tok == "if":
+                    nesting += 1
+                elif tok == "fi":
+                    nesting -= 1
+        except ValueError:
+            # Incomplete quoting, not a keyword line
+            pass
+
+    return lines
+
+
 def read_command(prompt="$ "):
     """ Read a command with support for line continuation. """
     lines = []
@@ -57,9 +78,10 @@ def read_command(prompt="$ "):
 
 
 def tokenize(line: str) -> list[str]:
-    """ Tokenize a line of shell command. """
-    lex = shlex.shlex(line, punctuation_chars=";&><")
-    return [lex.get_token()]
+    lex = shlex.shlex(line, posix=True, punctuation_chars=";&><")
+    lex.whitespace_split = True
+    lex.commenters = ""
+    return list(lex)
 
 
 def split_on_semicolons(tokens: list[str]):
