@@ -1,6 +1,7 @@
 """ Implement the core of the shell. """
 import contextlib
 import glob
+import re
 import shlex
 import subprocess
 import sys
@@ -122,6 +123,16 @@ def tokenize(line: str) -> list[str]:
     return result
 
 
+VAR_NAME_RX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+def is_assignment_token(tok: str) -> bool:
+    """ Return True if tok looks like NAME=value with a valid NAME. """
+    if "=" not in tok or tok.startswith("="):
+        return False
+    name, _ = tok.split("=", 1)
+    return bool(VAR_NAME_RX.match(name))
+
+
 def split_on_semicolons(tokens: list[str]):
     """ Split commands where semicolon tokens are found. """
     commands = []
@@ -143,6 +154,24 @@ def split_on_semicolons(tokens: list[str]):
 
 def parse_simple_command(tokens: list[str], state: ShellState) -> Command|None:
     """ Parse a simple shell command. """
+    if not tokens:
+        return None
+
+    # Handle variable assignments as a pre-command step.
+    # Supports: NAME=value
+    # Also supports multiple leading assignments: A=1 B=2 cmd ...
+    idx = 0
+    while idx < len(tokens) and is_assignment_token(tokens[idx]):
+        name, value = tokens[idx].split("=", 1)
+        # Store raw value; interpolation happens when used ($NAME)
+        state.set_var(name, value, export=False)
+        idx += 1
+
+    # If the line was only assignments, there's no command to execute.
+    if idx >= len(tokens):
+        return None
+    tokens = tokens[idx:]
+
     tokens = [state.interpolate(tok) for tok in tokens]
     tokens = expand_globs(tokens)
 

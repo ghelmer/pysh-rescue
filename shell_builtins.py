@@ -1,9 +1,12 @@
 """ Registry of builtin commands. """
 import os
+import re
 
 from exceptions import ShellExit
 
 BUILTINS = {}
+VAR_NAME_RX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def builtin(name):
     """Decorator to register builtins"""
@@ -38,8 +41,44 @@ def builtin_echo(args, state) -> int:
 
 @builtin("exit")
 def builtin_exit(args, state):
-    status = int(args[0]) if args else 0
+    try:
+        status = int(args[0]) if args else 0
+    except ValueError:
+        print("exit: numeric argument required")
+        status = 2
     raise ShellExit(status)
+
+
+@builtin("export")
+def builtin_export(args, state):
+    """
+    export NAME=value
+    export NAME
+    export   (prints exported vars)
+    """
+    # No args: display exported environment variables (simple version)
+    if not args:
+        for k in sorted(os.environ.keys()):
+            print(f"{k}={os.environ[k]}")
+        return 0
+
+    for arg in args:
+        if "=" in arg:
+            name, value = arg.split("=", 1)
+            if not VAR_NAME_RX.match(name):
+                print(f"export: not a valid identifier: {name}")
+                return 1
+            state.set_var(name, value, export=True)
+        else:
+            name = arg
+            if not VAR_NAME_RX.match(name):
+                print(f"export: not a valid identifier: {name}")
+                return 1
+            # Export current shell var value (or empty if unset)
+            value = state.get_var(name)
+            state.set_var(name, value, export=True)
+
+    return 0
 
 
 @builtin("pwd")
