@@ -1,6 +1,6 @@
 """ Parse if/then/elif/else/fi blocks properly. """
 
-from executable import Executable
+from command import Executable
 from shell_state import ShellState
 
 

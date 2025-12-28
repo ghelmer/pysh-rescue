@@ -5,8 +5,7 @@ import shlex
 import subprocess
 import sys
 
-from commandnode import CommandNode
-from executable import Executable
+from command import CommandNode, Executable
 from shell_builtins import BUILTINS
 from command import Command
 from exceptions import ShellExit
