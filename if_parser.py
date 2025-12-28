@@ -17,6 +17,32 @@ class IfStatement:
         self.else_body = body_lines
 
 
+def split_on_semicolon_respecting_quotes(line):
+    """
+    Split a line on semicolons, respecting quotes.
+    Returns list of command strings.
+    """
+    commands = []
+    current = []
+
+    lexer = shlex.shlex(line, posix=True)
+    lexer.whitespace_split = False
+    lexer.whitespace = ' \t\r\n'
+
+    for token in lexer:
+        if token == ';':
+            if current:
+                commands.append(' '.join(current))
+                current = []
+        else:
+            current.append(token)
+
+    if current:
+        commands.append(' '.join(current))
+
+    return commands
+
+
 def parse_if_statement(lines):
     """
     Parse if/then/elif/else/fi structure.
@@ -28,13 +54,19 @@ def parse_if_statement(lines):
     """
     stmt = IfStatement()
 
+    # First, flatten lines by splitting on semicolons
+    expanded_lines = []
+    for line in lines:
+        parts = split_on_semicolon_respecting_quotes(line)
+        expanded_lines.extend(parts)
+
     i = 0
     state = 'start'  # start, condition, body, done
     current_condition = []
     current_body = []
 
-    while i < len(lines):
-        line = lines[i]
+    while i < len(expanded_lines):
+        line = expanded_lines[i]
 
         # Tokenize properly to detect keywords
         try:
@@ -107,7 +139,7 @@ def parse_if_statement(lines):
             elif state == 'body' or state == 'else_body':
                 current_body.append(line)
             else:
-                raise SyntaxError(f"Unexpected command:  {line}")
+                raise SyntaxError(f"Unexpected command:   {line}")
 
         i += 1
 
