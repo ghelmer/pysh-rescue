@@ -10,6 +10,11 @@ from command import Command
 from exceptions import ShellExit
 from shell_state import ShellState
 
+# Import builtin modules to register them
+import builtin_cd
+import builtin_exit
+import builtin_pwd
+import builtin_ls
 
 GLOB_CHARS = set("*?[")
 
