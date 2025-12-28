@@ -5,17 +5,19 @@ import shlex
 import subprocess
 import sys
 
+from commandnode import CommandNode
+from executable import Executable
 from shell_builtins import BUILTINS
 from command import Command
 from exceptions import ShellExit
 from shell_state import ShellState
 from block_reader import read_until_fi
-from if_parser import parse_if_statement
-from if_executor import execute_if_statement
+from if_parser import parse_if_to_node
 
 
 # Import builtin modules to register them
 import builtin_cd
+import builtin_echo
 import builtin_exit
 import builtin_pwd
 import builtin_ls
@@ -54,46 +56,39 @@ def read_command(prompt="$ "):
     return "".join(lines)
 
 
-def split_on_semicolon(line):
-    """
-    Split a line into multiple commands separated by semicolons.
-    Respects quoting - semicolons inside quotes are not separators.
+def tokenize(line: str) -> list[str]:
+    """ Tokenize a line of shell command. """
+    lex = shlex.shlex(line, punctuation_chars=";&><")
+    return [lex.get_token()]
 
-    Returns:  List of command strings
-    """
+
+def split_on_semicolons(tokens: list[str]):
+    """ Split commands where semicolon tokens are found. """
     commands = []
     current = []
 
-    # Use shlex to tokenize, which respects quotes
-    lexer = shlex.shlex(line, posix=True)
-    lexer.whitespace_split = False
-    lexer.whitespace = ' \t\r\n'  # Don't treat ; as whitespace
-
-    for token in lexer:
-        if token == ';':
-            # End of command
+    for tok in tokens:
+        if tok == ";":
             if current:
-                commands.append(' '.join(current))
+                commands.append(current)
                 current = []
         else:
-            current.append(token)
+            current.append(tok)
 
-    # Don't forget the last command
     if current:
-        commands.append(' '.join(current))
+        commands.append(current)
 
     return commands
 
 
-def parse_command(line, state):
-    tokens = shlex.split(line)
-
+def parse_simple_command(tokens: list[str], state: ShellState) -> Command|None:
+    """ Parse a simple shell command. """
     tokens = [state.interpolate(tok) for tok in tokens]
     tokens = expand_globs(tokens)
 
     stdout = None
     append = False
-    cleaned = []
+    args = []
 
     it = iter(tokens)
     for tok in it:
@@ -103,12 +98,28 @@ def parse_command(line, state):
             stdout = next(it)
             append = True
         else:
-            cleaned.append(tok)
+            args.append(tok)
 
-    if not cleaned:
+    if not args:
         return None
 
-    return Command(cleaned[0], cleaned[1:], stdout, append)
+    return Command(args[0], args[1:], stdout, append)
+
+
+def parse_command_list(tokens: list[str], state: ShellState) -> list[Command]:
+    command_tokens = split_on_semicolons(tokens)
+    return [parse_simple_command(cmd, state) for cmd in command_tokens]
+
+
+def parse_top_level(tokens: list[str], state: ShellState) -> list[Executable]:
+    if not tokens:
+        return []
+
+    if tokens[0] == "if":
+        return [parse_if_to_node(tokens, state, parse_command_list, )]  # you implement this wrapper
+
+    cmds = parse_command_list(tokens, state)
+    return [CommandNode(c, execute_command) for c in cmds]
 
 
 @contextlib.contextmanager
@@ -146,26 +157,19 @@ class Shell:
         while True:
             try:
                 line = read_command()
+                tokens = tokenize(line)
 
-                # Tokenize to check for control flow keywords
-                try:
-                    tokens = shlex.split(line)
-                except ValueError:
-                    tokens = []
-
+                # if-block handling needs to read more lines BEFORE parsing
                 if tokens and tokens[0] == "if":
-                    # Read entire block (respects continuation in each line)
                     block_lines = [line] + read_until_fi(read_command)
-                    # Parse structure (respects quoting)
-                    stmt = parse_if_statement(block_lines)
-                    # Execute (defers all interpolation/expansion until needed)
-                    execute_if_statement(stmt, self.state, parse_command, execute_command, split_on_semicolon)
-
+                    block_text = " ; ".join(block_lines)
+                    block_tokens = tokenize(block_text)
+                    nodes = [parse_if_to_node(block_tokens, parse_command_list, execute_command)]
                 else:
-                    cmd = parse_command(line, self.state)
-                    if cmd:
-                        execute_command(cmd, self.state)
+                    nodes = parse_top_level(tokens, self.state)
 
+                for node in nodes:
+                    node.execute(self.state)
             except ShellExit as e:
                 return e.status
 
