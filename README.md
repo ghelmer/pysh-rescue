@@ -157,6 +157,19 @@ job control, or scripting support could be added incrementally.
 
 ---
 
+### Merge & Minify
+
+Create a small (12KB) file containing all the code:
+
+```sh
+$ pip install pymerger
+$ python -m pymerger *.py
+$ pip install python-minifier
+$ pyminify merged_files.py > merged_files_minified.py
+```
+
+---
+
 ### License
 
 Copyright (c) 2025 Guy Helmer
