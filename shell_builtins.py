@@ -1,6 +1,7 @@
 """ Registry of builtin commands. """
 import os
 import stat
+import sys
 
 from exceptions import ShellExit
 from constants import VAR_NAME_RX
@@ -16,6 +17,31 @@ def builtin(name):
     return wrapper
 
 
+@builtin("cat")
+def builtin_cat(args, state):
+    if not args:
+        for line in sys.stdin:
+            print(line, end="")
+        return 0
+
+    rc = 0
+    for path in args:
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                for chunk in f:
+                    print(chunk, end="")
+        except FileNotFoundError:
+            print(f"cat: {path}: No such file or directory", file=sys.stderr)
+            rc = 1
+        except PermissionError:
+            print(f"cat: {path}: Permission denied", file=sys.stderr)
+            rc = 1
+        except IsADirectoryError:
+            print(f"cat: {path}: Is a directory", file=sys.stderr)
+            rc = 1
+
+    return rc
+
 @builtin("cd")
 def builtin_cd(args, state):
     if len(args) == 0:
@@ -26,9 +52,9 @@ def builtin_cd(args, state):
     try:
         os.chdir(target)
     except FileNotFoundError:
-        print(f"cd: no such file or directory: {target}")
+        print(f"cd: no such file or directory: {target}", file=sys.stderr)
     except NotADirectoryError:
-        print(f"cd: not a directory: {target}")
+        print(f"cd: not a directory: {target}", file=sys.stderr)
 
     return 0
 
@@ -44,7 +70,7 @@ def builtin_exit(args, state):
     try:
         status = int(args[0]) if args else 0
     except ValueError:
-        print("exit: numeric argument required")
+        print("exit: numeric argument required", file=sys.stderr)
         status = 2
     raise ShellExit(status)
 
@@ -66,13 +92,13 @@ def builtin_export(args, state):
         if "=" in arg:
             name, value = arg.split("=", 1)
             if not VAR_NAME_RX.match(name):
-                print(f"export: not a valid identifier: {name}")
+                print(f"export: not a valid identifier: {name}", file=sys.stderr)
                 return 1
             state.set_var(name, value, export=True)
         else:
             name = arg
             if not VAR_NAME_RX.match(name):
-                print(f"export: not a valid identifier: {name}")
+                print(f"export: not a valid identifier: {name}", file=sys.stderr)
                 return 1
             # Export current shell var value (or empty if unset)
             value = state.get_var(name)
@@ -103,11 +129,11 @@ def parse_ls_args(args):
     return options, paths
 
 
-def _ls_list_directory(path, show_all):
+def _ls_list_directory(path, show_all, state):
     try:
         entries = os.listdir(path)
     except PermissionError:
-        print(f"ls: cannot open directory '{path}'")
+        print(f"ls: cannot open directory '{path}'", file=sys.stderr)
         return []
 
     if not show_all:
@@ -137,7 +163,7 @@ def builtin_ls(args, state) -> int:
             if multiple:
                 print(f"{path}:")
 
-            entries = _ls_list_directory(path, options["all"])
+            entries = _ls_list_directory(path, options["all"], state)
 
             for name in entries:
                 if options["long"]:
@@ -154,7 +180,7 @@ def builtin_ls(args, state) -> int:
             else:
                 print(path)
         else:
-            print(f"ls: cannot access '{path}'")
+            print(f"ls: cannot access '{path}'", file=sys.stderr)
     return 0
 
 

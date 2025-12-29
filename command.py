@@ -9,12 +9,20 @@ class Executable:
 
 
 class Command:
-    """ A parsed command. """
-    def __init__(self, name, args, stdout=None, append=False):
+    def __init__(self, name, args, stdin=None, stdout=None, append=False,
+                 stderr=None, stderr_append=False, redirect_both=False):
         self.name = name
         self.args = args
+        self.stdin = stdin        # filename or None
+
         self.stdout = stdout      # filename or None
         self.append = append      # True for >>
+
+        self.stderr = stderr      # filename or None
+        self.stderr_append = stderr_append
+
+        # if True, redirect stdout+stderr to the same file
+        self.redirect_both = redirect_both
 
 
 class CommandNode(Executable):

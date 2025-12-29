@@ -2,7 +2,7 @@
 import glob
 
 from command import Command, Executable, CommandNode
-from constants import GLOB_CHARS, VAR_NAME_RX
+from constants import GLOB_CHARS, VAR_NAME_RX, REDIR_COMBINED_RX
 from shell_state import ShellState
 
 
@@ -74,29 +74,109 @@ def parse_simple_command(tokens: list[str], state: ShellState) -> Command|None:
     tokens = [state.interpolate(tok) for tok in tokens]
     tokens = expand_globs(tokens)
 
+    stdin = None
     stdout = None
     append = False
-    args = []
+    stderr = None
+    stderr_append = False
+    redirect_both = False
 
-    it = iter(tokens)
-    for tok in it:
-        if tok == ">":
-            stdout = next(it, None)
-            if stdout is None:
-                raise SyntaxError("syntax error: expected filename after '>'")
-        elif tok == ">>":
-            stdout = next(it, None)
-            if stdout is None:
-                raise SyntaxError("syntax error: expected filename after '>>'")
-            append = True
-        else:
-            args.append(tok)
+    def require_filename(next_tok, msg):
+        if next_tok is None or next_tok == "":
+            raise SyntaxError(msg)
+        return next_tok
+
+    args = []
+    i = 0
+
+    while i < len(tokens):
+        tok = tokens[i]
+        # --- handle plain operators <, >, >>
+        if tok == "<":
+            i += 1
+            stdin = require_filename(tokens[i] if i < len(tokens) else None,
+                                     "syntax error: expected filename after '<'")
+            i += 1
+            continue
+        if tok in (">", ">>"):
+            i += 1
+            filename = require_filename(tokens[i] if i < len(tokens) else None,
+                                        f"syntax error: expected filename after '{tok}'")
+            stdout = filename
+            append = (tok == ">>")
+            i += 1
+            continue
+
+        # --- handle spaced fd redirection: 2 > file or 2 >> file
+        if tok.isdigit() and i + 1 < len(tokens) and tokens[i + 1] in (">", ">>"):
+            fd = tok
+            op = tokens[i + 1]
+            i += 2
+            filename = require_filename(tokens[i] if i < len(tokens) else None,
+                                        f"syntax error: expected filename after '{fd}{op}'")
+            if fd == "2":
+                stderr = filename
+                stderr_append = (op == ">>")
+            elif fd == "1":
+                stdout = filename
+                append = (op == ">>")
+            else:
+                # optional: treat other fds as error for now
+                raise SyntaxError(f"unsupported fd redirection: {fd}{op}")
+            i += 1
+            continue
+
+        # --- handle combined tokens: 2>file, 2>>file, &>file, &>>file
+        m = REDIR_COMBINED_RX.match(tok)
+        if m:
+            fd = m.group("fd")  # "2" or "&" etc.
+            op = m.group("op")  # ">" or ">>"
+            rest = m.group("rest")  # maybe filename, maybe empty
+
+            # filename may be in the same token (2>file) or next token (2> file)
+            if rest:
+                filename = rest
+                i += 1
+            else:
+                i += 1
+                filename = require_filename(tokens[i] if i < len(tokens) else None,
+                                            f"syntax error: expected filename after '{fd}{op}'")
+                i += 1
+
+            if fd == "&":
+                redirect_both = True
+                stdout = filename
+                append = (op == ">>")
+                stderr = filename
+                stderr_append = (op == ">>")
+            elif fd == "2":
+                stderr = filename
+                stderr_append = (op == ">>")
+            elif fd == "1":
+                stdout = filename
+                append = (op == ">>")
+            else:
+                raise SyntaxError(f"unsupported fd redirection: {fd}{op}")
+
+            continue
+
+        # normal arg
+        args.append(tok)
+        i += 1
 
     if not args:
         return None
 
-    return Command(args[0], args[1:], stdout, append)
-
+    return Command(
+        args[0],
+        args[1:],
+        stdin=stdin,
+        stdout=stdout,
+        append=append,
+        stderr=stderr,
+        stderr_append=stderr_append,
+        redirect_both=redirect_both,
+    )
 
 def parse_command_list(tokens: list[str], state: ShellState) -> list[Command]:
     command_tokens = split_on_semicolons(tokens)
