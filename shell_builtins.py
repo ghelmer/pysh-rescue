@@ -1,5 +1,6 @@
 """ Registry of builtin commands. """
 import os
+import shutil
 import stat
 import sys
 
@@ -188,6 +189,70 @@ def builtin_ls(args, state) -> int:
 def builtin_pwd(args, state):
     print(os.getcwd())
     return 0
+
+
+@builtin("rm")
+def builtin_rm(args, state):
+    """
+    rm [-r] [-f] FILE...
+      -r  recursive (remove directories)
+      -f  force (ignore missing files, suppress most errors)
+    """
+    recursive = False
+    force = False
+    paths = []
+
+    # Parse flags
+    for a in args:
+        if a.startswith("-") and a != "-":
+            # support -r, -f, -rf, -fr
+            for ch in a[1:]:
+                if ch == "r":
+                    recursive = True
+                elif ch == "f":
+                    force = True
+                else:
+                    print(f"rm: invalid option -- '{ch}'", file=sys.stderr)
+                    return 2
+        else:
+            paths.append(a)
+
+    if not paths:
+        print("rm: missing operand", file=sys.stderr)
+        return 1
+
+    rc = 0
+
+    for path in paths:
+        try:
+            # If it's a directory, only remove if -r
+            if os.path.isdir(path) and not os.path.islink(path):
+                if not recursive:
+                    print(f"rm: cannot remove '{path}': Is a directory", file=sys.stderr)
+                    rc = 1
+                    continue
+                shutil.rmtree(path)
+            else:
+                # file or symlink
+                os.remove(path)
+
+        except FileNotFoundError:
+            if not force:
+                print(f"rm: cannot remove '{path}': No such file or directory", file=sys.stderr)
+                rc = 1
+
+        except PermissionError:
+            if not force:
+                print(f"rm: cannot remove '{path}': Permission denied", file=sys.stderr)
+                rc = 1
+
+        except OSError as e:
+            # Catches cases like "Directory not empty" without -r, etc.
+            if not force:
+                print(f"rm: cannot remove '{path}': {e}", file=sys.stderr)
+                rc = 1
+
+    return rc
 
 
 @builtin("[")
