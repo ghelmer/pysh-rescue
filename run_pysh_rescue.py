@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-""" Download the shell from Github and execute it. Only standard libraries are used. """
+"""
+Fetch and execute the pysh-rescue shell directly from GitHub.
+
+This bootstrap script downloads the pysh-rescue source files and runs the shell
+without requiring any third-party packages. Only Python standard libraries are used.
+
+SECURITY WARNING:
+This script downloads and executes code from GitHub at runtime.
+Use the --commit option to pin execution to a specific commit, tag, or ref
+to avoid running unexpected or untrusted code.
+"""
 import argparse
 import importlib
 import sys
