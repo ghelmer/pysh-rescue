@@ -99,7 +99,8 @@ class Shell:
                     nodes = parse_top_level(tokens, self.state, execute_command)
 
                 for node in nodes:
-                    node.execute(self.state)
+                    status = node.execute(self.state)
+                    self.state.set_status(status)
             except ShellExit as e:
                 return e.status
 

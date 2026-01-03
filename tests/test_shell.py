@@ -183,6 +183,25 @@ class TestShellRun(unittest.TestCase):
             rc = self.shell.run()
         self.assertEqual(0, rc)
 
+    def test_shell_run_updates_last_status(self):
+        sh = shell.Shell()
+
+        # Make a node that returns a non-zero status
+        n1 = MagicMock()
+        n1.execute.return_value = 3
+        # then a node that returns 0
+        n2 = MagicMock()
+        n2.execute.return_value = 0
+
+        with patch.object(shell, "read_command", side_effect=["echo hi", EOFError]), \
+             patch.object(shell, "tokenize", return_value=["echo", "hi"]), \
+             patch.object(shell, "parse_top_level", return_value=[n1, n2]):
+
+            rc = sh.run()
+
+        self.assertEqual(rc, 0)               # shell returns 0 on EOF
+        self.assertEqual(sh.state.last_status, 0)  # last executed node was 0
+
 
 if __name__ == "__main__":
     unittest.main()
