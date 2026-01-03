@@ -52,12 +52,13 @@ def builtin_cd(args, state):
 
     try:
         os.chdir(target)
+        return 0
     except FileNotFoundError:
         print(f"cd: no such file or directory: {target}", file=sys.stderr)
     except NotADirectoryError:
         print(f"cd: not a directory: {target}", file=sys.stderr)
-
-    return 0
+    # Indicate failure due to error
+    return 1
 
 
 @builtin("echo")
@@ -203,8 +204,13 @@ def builtin_rm(args, state):
     paths = []
 
     # Parse flags
+    parsing_opts = True
     for a in args:
-        if a.startswith("-") and a != "-":
+        if parsing_opts and a == "--":
+            parsing_opts = False
+            continue
+
+        if parsing_opts and a.startswith("-") and a != "-":
             # support -r, -f, -rf, -fr
             for ch in a[1:]:
                 if ch == "r":
@@ -215,18 +221,47 @@ def builtin_rm(args, state):
                     print(f"rm: invalid option -- '{ch}'", file=sys.stderr)
                     return 2
         else:
+            parsing_opts = False  # end options at first path (recommended)
             paths.append(a)
 
     if not paths:
         print("rm: missing operand", file=sys.stderr)
         return 1
 
+    def has_parent_ref(p: str) -> bool:
+        # Treat any ".." path component as unsafe
+        parts = [x for x in p.split(os.sep) if x not in ("", ".")]
+        return ".." in parts
+
     rc = 0
 
     for path in paths:
+        # Guardrails apply only to recursive removal
+        if recursive:
+            # 1) forbid '..' components
+            if has_parent_ref(path):
+                if not force:
+                    print(f"rm: refusing to remove '{path}': contains '..'", file=sys.stderr)
+                    rc = 1
+                continue
+
+            # 2) forbid removing filesystem root (after normalization)
+            # - abspath() anchors relative paths to cwd
+            # - normpath() collapses things like "a/.."
+            # - realpath() resolves symlinks (helps catch "/var/.." -> "/")
+            resolved = os.path.realpath(os.path.normpath(os.path.abspath(path)))
+            if resolved == os.path.sep:
+                if not force:
+                    print("rm: refusing to remove '/' recursively", file=sys.stderr)
+                    rc = 1
+                continue
+
         try:
             # If it's a directory, only remove if -r
-            if os.path.isdir(path) and not os.path.islink(path):
+            st = os.lstat(path)  # doesn't follow symlinks
+            is_link = stat.S_ISLNK(st.st_mode)
+            is_dir = stat.S_ISDIR(st.st_mode)
+            if is_dir and not is_link:
                 if not recursive:
                     print(f"rm: cannot remove '{path}': Is a directory", file=sys.stderr)
                     rc = 1
