@@ -146,7 +146,7 @@ This shell intentionally does not implement:
 * Background execution (`&`)
 * Job control
 * Globbing beyond basic filename expansion
-* Advanced shell expansions (`$(...)`, `${VAR}`, arrays)
+* Advanced shell expansions (`$(...)`, arrays)
 * Signal handling beyond basic interruption
 
 These omissions keep the codebase compact and approachable.
@@ -157,14 +157,22 @@ These omissions keep the codebase compact and approachable.
 
 The codebase is organized into small, focused modules:
 
-* `lexer.py` — tokenization and operator handling
-* `parser.py` — command and redirection parsing
-* `runner.py` — command execution and redirection wiring
-* `shell.py` — REPL and control flow
-* `shell_builtins.py` — builtin command registry
-* `if_parser.py` — parsing and execution of if blocks
-* `command.py` — command representation
-* `shell_state.py` — variable and environment management
+* `src` folder:
+  * `lexer.py` — tokenization and operator handling
+  * `parser.py` — command and redirection parsing
+  * `runner.py` — command execution and redirection wiring
+  * `shell.py` — REPL and control flow
+  * `shell_builtins.py` — builtin command registry
+  * `if_parser.py` — parsing and execution of if blocks
+  * `command.py` — command representation
+  * `shell_state.py` — variable and environment management
+* `tests` folder -- unit tests for logic:
+  * `test_parser.py` — command and redirection parsing
+  * `test_runner.py` — command execution and redirection wiring
+  * `test_shell.py` — REPL and control flow
+  * `test_shell_builtins.py` — builtin command registry
+  * `test_if_parser.py` — parsing and execution of if blocks
+  * `test_shell_state.py` — variable and environment management
 
 ---
 
