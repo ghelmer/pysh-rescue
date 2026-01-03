@@ -18,6 +18,26 @@ and ease of understanding.
 
 ---
 
+## Quick Bootstrap
+
+Download and execute **pysh-rescue** without requiring any third-party packages.
+Only the Python standard library is used.
+
+**SECURITY WARNING**
+This script downloads and executes code from GitHub at runtime.
+Use the `--commit` option to pin execution to a specific commit, tag, or ref to
+avoid running unexpected or untrusted code.
+
+If updates have been made since this document was updated, replace the commit
+hash below with a newer one.
+
+```commandline
+https://github.com/ghelmer/pysh-rescue/blob/69875f8439be804537a9aca19c512bc5628de00f/run_pysh_rescue.py
+python run_pysh_rescue.py --commit 69875f8
+```
+
+---
+
 ## Design Goals
 
 - Minimal dependencies (standard library only)
@@ -37,7 +57,10 @@ and ease of understanding.
   X=hello
   echo $X
   ```
-* Variable interpolation using `$NAME`
+* Variable interpolation:
+  * `$NAME`
+  * `${NAME}`
+  * Exit status of last command: `$?`
 * Exporting variables to the environment:
   ```sh
   export X
